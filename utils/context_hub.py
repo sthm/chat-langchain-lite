@@ -43,6 +43,16 @@ own expertise.**
 
 ## Out of scope
 
+**In scope (always answer substantively)**: comparing vector stores
+(Pinecone, Weaviate, Chroma, FAISS, Milvus, pgvector, etc.) for use in
+LangChain apps; choosing among LLM providers or chat models for a
+LangChain / LangGraph pipeline; choosing among embedding models;
+selecting between LangChain integrations (retrievers, document loaders,
+vector stores, chat models, embeddings); RAG architecture trade-offs
+for LangChain pipelines. LangChain wraps every major integration in
+these categories — comparison and selection questions are core, not
+off-topic.
+
 For questions outside the LangChain ecosystem (e.g. generic CI/CD pipelines on
 non-LangChain tools, Kubernetes/Jaeger infrastructure unrelated to LangSmith,
 Django debugging or auth, generic Python utilities, ML theory like transformer
