@@ -1,8 +1,11 @@
 import os
+from typing import Callable
 
 from langchain.agents import create_agent
+from langchain.agents.middleware import AgentMiddleware
+from langchain.agents.middleware.types import ModelRequest, ModelResponse
 from langchain_anthropic import ChatAnthropic
-from langchain_core.messages import AIMessageChunk, ToolMessage
+from langchain_core.messages import AIMessage, AIMessageChunk, ToolMessage
 from langchain_core.runnables import RunnableConfig
 
 from deepagents.middleware.filesystem import FilesystemMiddleware
@@ -33,6 +36,10 @@ def _model_id() -> str:
 # playbooks) — it is a read-only reference, NOT a user-delivery channel.
 _READONLY_FS_TOOLS = {"ls", "read_file", "glob", "grep"}
 
+# Cap sized for code walkthroughs and multi-section answers. Defense-in-depth
+# against silent truncation lives in MaxTokensRetryMiddleware below.
+_DEFAULT_MAX_TOKENS = 4096
+
 
 def _readonly_context_hub_fs() -> FilesystemMiddleware:
     fs = FilesystemMiddleware(backend=ContextHubBackend(CONTEXT_HUB_REPO))
@@ -40,15 +47,49 @@ def _readonly_context_hub_fs() -> FilesystemMiddleware:
     return fs
 
 
+class MaxTokensRetryMiddleware(AgentMiddleware):
+    """Retry once with doubled max_tokens when the model hits its output cap."""
+
+    def wrap_model_call(
+        self,
+        request: ModelRequest,
+        handler: Callable[[ModelRequest], ModelResponse],
+    ) -> ModelResponse:
+        response = handler(request)
+        if not _hit_max_tokens(response):
+            return response
+        retry_model = _double_max_tokens(request.model)
+        if retry_model is None:
+            return response
+        return handler(request.override(model=retry_model))
+
+
+def _hit_max_tokens(response: ModelResponse) -> bool:
+    for msg in response.result:
+        if not isinstance(msg, AIMessage):
+            continue
+        metadata = getattr(msg, "response_metadata", None) or {}
+        if metadata.get("stop_reason") == "max_tokens":
+            return True
+    return False
+
+
+def _double_max_tokens(model):
+    current = getattr(model, "max_tokens", None)
+    if not isinstance(current, int) or current <= 0:
+        return None
+    return model.model_copy(update={"max_tokens": current * 2})
+
+
 def build_agent():
     return create_agent(
         # temperature=0 for deterministic, reproducible demo behavior — the
-        # intentional bugs (tone, scope, truncation) come from the prompt and
-        # max_tokens, not sampling, so pinning temperature keeps traces consistent.
-        model=ChatAnthropic(model=_model_id(), max_tokens=300, temperature=0),
+        # intentional bugs (tone, scope) come from the prompt, so pinning
+        # temperature keeps traces consistent.
+        model=ChatAnthropic(model=_model_id(), max_tokens=_DEFAULT_MAX_TOKENS, temperature=0),
         tools=TOOLS,
         system_prompt=SYSTEM_PROMPT,
-        middleware=[_readonly_context_hub_fs()],
+        middleware=[_readonly_context_hub_fs(), MaxTokensRetryMiddleware()],
     )
 
 
