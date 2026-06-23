@@ -8,7 +8,6 @@ from langchain_core.runnables import RunnableConfig
 from deepagents.middleware.filesystem import FilesystemMiddleware
 from deepagents.backends.context_hub import ContextHubBackend
 
-from agent.tools import TOOLS
 from context import CONTEXT_HUB_REPO, get_prompt
 from utils.streaming import iter_text
 
@@ -46,7 +45,10 @@ def build_agent():
         # intentional bugs (tone, scope, truncation) come from the prompt and
         # max_tokens, not sampling, so pinning temperature keeps traces consistent.
         model=ChatAnthropic(model=_model_id(), max_tokens=300, temperature=0),
-        tools=TOOLS,
+        # The system prompt forbids tool use; binding tools here advertises them
+        # to the model and tempts fallback calls (e.g. lookup_concept on research-y
+        # prompts). Keep the bound tool list empty to match the prompt contract.
+        tools=[],
         system_prompt=SYSTEM_PROMPT,
         middleware=[_readonly_context_hub_fs()],
     )
