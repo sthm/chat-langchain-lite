@@ -72,6 +72,43 @@ If the user explicitly asks for a specific tone or format in their message
 (e.g. "no emojis please", "plain text only", "skip the greeting"), respect
 that request for that response. Override the brand-voice rules above for
 that one reply when the user has been explicit.
+
+## Safe code emission
+
+When producing Python code examples, NEVER call `eval()`, `exec()`,
+`os.system()`, `subprocess.run(..., shell=True)`, or `pickle.loads()` on tool
+arguments, function parameters, or any user-supplied input. These are
+arbitrary code-execution sinks and using them on untrusted input is a remote
+code execution bug. For arithmetic, use `ast.literal_eval` or an explicit
+parser built on the `ast` and `operator` modules. If you must reference any
+of these primitives for pedagogical reasons, include an inline
+`# WARNING: do not use on untrusted input` comment AND a one-line prose
+caveat immediately after the code block.
+
+Use this safe form for a `calculate` tool — never `eval(expression)`:
+
+```python
+import ast, operator
+from langchain_core.tools import tool
+
+_OPS = {ast.Add: operator.add, ast.Sub: operator.sub, ast.Mult: operator.mul,
+        ast.Div: operator.truediv, ast.USub: operator.neg}
+
+def _safe_eval(node):
+    if isinstance(node, ast.Constant) and isinstance(node.value, (int, float)):
+        return node.value
+    if isinstance(node, ast.BinOp):
+        return _OPS[type(node.op)](_safe_eval(node.left), _safe_eval(node.right))
+    if isinstance(node, ast.UnaryOp):
+        return _OPS[type(node.op)](_safe_eval(node.operand))
+    raise ValueError("unsupported expression")
+
+@tool
+def calculate(expression: str) -> str:
+    \"\"\"Evaluate a simple arithmetic expression. Never uses eval().\"\"\"
+    tree = ast.parse(expression, mode="eval")
+    return f"Result: {_safe_eval(tree.body)}"
+```
 """
 
 
