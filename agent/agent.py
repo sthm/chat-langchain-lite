@@ -1,8 +1,10 @@
 import os
+import time
 
+import anthropic
 from langchain.agents import create_agent
 from langchain_anthropic import ChatAnthropic
-from langchain_core.messages import AIMessageChunk, ToolMessage
+from langchain_core.messages import AIMessage, AIMessageChunk, ToolMessage
 from langchain_core.runnables import RunnableConfig
 
 from deepagents.middleware.filesystem import FilesystemMiddleware
@@ -23,6 +25,12 @@ SYSTEM_PROMPT = get_prompt()
 # baseline experiments against a more expensive model (Sonnet) for the
 # demo's cost/latency comparison.
 _DEFAULT_MODEL = "claude-haiku-4-5-20251001"
+_TRANSIENT_RETRY_ATTEMPTS = 3
+_TRANSIENT_RETRY_INITIAL_DELAY = 0.25
+_TRANSIENT_STATUS_CODES = {408, 409, 429}
+_TRANSIENT_FALLBACK_MESSAGE = (
+    "The model provider is temporarily unavailable. Please try again in a few minutes."
+)
 
 
 def _model_id() -> str:
@@ -67,9 +75,65 @@ def _user_msg(question: str) -> dict:
     return {"messages": [{"role": "user", "content": question}]}
 
 
+def _status_code(exc: BaseException) -> int | None:
+    response = getattr(exc, "response", None)
+    return getattr(exc, "status_code", None) or getattr(response, "status_code", None)
+
+
+def _is_transient_provider_error(exc: BaseException) -> bool:
+    if isinstance(exc, (anthropic.APIConnectionError, anthropic.APITimeoutError)):
+        return True
+    status_code = _status_code(exc)
+    if status_code in _TRANSIENT_STATUS_CODES or (
+        status_code is not None and status_code >= 500
+    ):
+        return True
+    return "overload" in str(exc).lower()
+
+
+def _sleep_before_retry(attempt: int) -> None:
+    time.sleep(_TRANSIENT_RETRY_INITIAL_DELAY * (2 ** attempt))
+
+
+def _invoke_with_transient_retries(call):
+    for attempt in range(_TRANSIENT_RETRY_ATTEMPTS):
+        try:
+            return call()
+        except Exception as exc:
+            if (
+                not _is_transient_provider_error(exc)
+                or attempt == _TRANSIENT_RETRY_ATTEMPTS - 1
+            ):
+                raise
+            _sleep_before_retry(attempt)
+
+
+def _fallback_result(exc: BaseException) -> dict:
+    message = AIMessage(
+        content=_TRANSIENT_FALLBACK_MESSAGE,
+        response_metadata={
+            "provider_error": str(exc),
+            "provider_error_type": type(exc).__name__,
+        },
+    )
+    return {
+        "output": _TRANSIENT_FALLBACK_MESSAGE,
+        "tools_called": [],
+        "messages": [message],
+        "error": str(exc),
+    }
+
+
 def invoke_agent(question: str, thread_id: str | None = None) -> dict:
     """Run the agent once. Returns {output, tools_called, messages}."""
-    result = build_agent().invoke(_user_msg(question), _config(thread_id))
+    try:
+        result = _invoke_with_transient_retries(
+            lambda: build_agent().invoke(_user_msg(question), _config(thread_id))
+        )
+    except Exception as exc:
+        if _is_transient_provider_error(exc):
+            return _fallback_result(exc)
+        raise
     output = next(
         (m.content for m in reversed(result["messages"])
          if isinstance(getattr(m, "content", None), str) and m.content),
@@ -81,8 +145,18 @@ def invoke_agent(question: str, thread_id: str | None = None) -> dict:
 
 def stream_agent(question: str, thread_id: str | None = None):
     """Stream the agent's response text as it's generated."""
-    for chunk, _meta in build_agent().stream(
-        _user_msg(question), _config(thread_id), stream_mode="messages"
-    ):
-        if isinstance(chunk, AIMessageChunk):
-            yield from iter_text(chunk)
+    for attempt in range(_TRANSIENT_RETRY_ATTEMPTS):
+        try:
+            for chunk, _meta in build_agent().stream(
+                _user_msg(question), _config(thread_id), stream_mode="messages"
+            ):
+                if isinstance(chunk, AIMessageChunk):
+                    yield from iter_text(chunk)
+            return
+        except Exception as exc:
+            if not _is_transient_provider_error(exc):
+                raise
+            if attempt == _TRANSIENT_RETRY_ATTEMPTS - 1:
+                yield _TRANSIENT_FALLBACK_MESSAGE
+                return
+            _sleep_before_retry(attempt)
