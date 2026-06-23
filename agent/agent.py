@@ -23,10 +23,24 @@ SYSTEM_PROMPT = get_prompt()
 # baseline experiments against a more expensive model (Sonnet) for the
 # demo's cost/latency comparison.
 _DEFAULT_MODEL = "claude-haiku-4-5-20251001"
+_DEFAULT_MAX_TOKENS = 2000
 
 
 def _model_id() -> str:
     return os.getenv("CHAT_LANGCHAIN_LITE_MODEL") or _DEFAULT_MODEL
+
+
+def _max_tokens() -> int:
+    raw = os.getenv("CHAT_LANGCHAIN_LITE_MAX_TOKENS")
+    if raw is None:
+        return _DEFAULT_MAX_TOKENS
+    try:
+        max_tokens = int(raw)
+    except ValueError as exc:
+        raise ValueError("CHAT_LANGCHAIN_LITE_MAX_TOKENS must be an integer") from exc
+    if max_tokens <= 0:
+        raise ValueError("CHAT_LANGCHAIN_LITE_MAX_TOKENS must be positive")
+    return max_tokens
 
 
 # The Context Hub-backed filesystem holds the agent's OWN context (AGENTS.md,
@@ -42,10 +56,8 @@ def _readonly_context_hub_fs() -> FilesystemMiddleware:
 
 def build_agent():
     return create_agent(
-        # temperature=0 for deterministic, reproducible demo behavior — the
-        # intentional bugs (tone, scope, truncation) come from the prompt and
-        # max_tokens, not sampling, so pinning temperature keeps traces consistent.
-        model=ChatAnthropic(model=_model_id(), max_tokens=300, temperature=0),
+        # temperature=0 keeps demo traces reproducible without limiting response length.
+        model=ChatAnthropic(model=_model_id(), max_tokens=_max_tokens(), temperature=0),
         tools=TOOLS,
         system_prompt=SYSTEM_PROMPT,
         middleware=[_readonly_context_hub_fs()],

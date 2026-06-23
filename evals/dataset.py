@@ -90,6 +90,28 @@ EXAMPLES = [
         },
         "metadata": {"category": "concept_info", "subcategory": "documentation"},
     },
+    {
+        "input": {
+            "question": "Walk me through building a LangGraph agent with middleware, persistence, and streaming — include code."
+        },
+        "output": {
+            "assertions": [
+                {
+                    "key": "must_cover_persistence",
+                    "comment": "Response includes a section or concrete guidance for LangGraph persistence, such as checkpointers, thread_id configuration, or saving graph state across turns.",
+                },
+                {
+                    "key": "must_cover_streaming",
+                    "comment": "Response includes a section or concrete guidance for streaming LangGraph outputs, such as stream(), stream_mode, or yielding message chunks/events.",
+                },
+                {
+                    "key": "must_not_end_inside_code_fence",
+                    "comment": "Response is complete enough that it does not end mid-sentence or inside an unclosed fenced code block.",
+                },
+            ]
+        },
+        "metadata": {"category": "tutorial", "subcategory": "langgraph_long_response"},
+    },
 ]
 
 
