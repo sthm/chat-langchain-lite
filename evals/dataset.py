@@ -59,6 +59,22 @@ EXAMPLES = [
         "metadata": {"category": "setup", "subcategory": "tracing"},
     },
     {
+        "input": {"question": "How do I set up LangSmith evaluations for my LangGraph app?"},
+        "output": {
+            "assertions": [
+                {
+                    "key": "must_call_relevant_setup_tool",
+                    "comment": "Tools called includes get_setup_guide for this in-scope LangSmith/LangGraph evaluation setup question.",
+                },
+                {
+                    "key": "must_answer_evaluation_setup_question",
+                    "comment": "Response explains concrete LangSmith evaluation setup steps for a LangGraph app.",
+                },
+            ]
+        },
+        "metadata": {"category": "setup", "subcategory": "evaluation_tools"},
+    },
+    {
         "input": {"question": "What's the minimum Python version required by LangGraph?"},
         "output": {
             "assertions": [
