@@ -41,21 +41,33 @@ def _readonly_context_hub_fs() -> FilesystemMiddleware:
 
 
 def build_agent():
-    return create_agent(
+    model = ChatAnthropic(
         # temperature=0 for deterministic, reproducible demo behavior — the
         # intentional bugs (tone, scope, truncation) come from the prompt and
         # max_tokens, not sampling, so pinning temperature keeps traces consistent.
-        model=ChatAnthropic(model=_model_id(), max_tokens=300, temperature=0),
+        model=_model_id(), max_tokens=300, temperature=0,
+    ).with_config({"metadata": {"ls_provider": "anthropic", "ls_model_name": _model_id()}})
+    return create_agent(
+        model=model,
         tools=TOOLS,
         system_prompt=SYSTEM_PROMPT,
         middleware=[_readonly_context_hub_fs()],
     )
 
 
-def _config(thread_id: str | None = None) -> RunnableConfig:
-    metadata = {"demo": "true", "demo_type": "chat-lc-lite", "model": _model_id()}
+def _config(thread_id: str | None = None, user_id: str | None = None) -> RunnableConfig:
+    metadata = {
+        "demo": "true",
+        "demo_type": "chat-lc-lite",
+        "model": _model_id(),
+        "ls_provider": "anthropic",
+        "ls_model_name": _model_id(),
+        "environment": os.getenv("CHAT_LANGCHAIN_LITE_ENV", "production"),
+    }
     if thread_id:
         metadata["thread_id"] = thread_id
+    if user_id:
+        metadata["user_id"] = user_id
     return RunnableConfig(
         run_name="chat-lc-lite-demo",
         metadata=metadata,
@@ -67,9 +79,9 @@ def _user_msg(question: str) -> dict:
     return {"messages": [{"role": "user", "content": question}]}
 
 
-def invoke_agent(question: str, thread_id: str | None = None) -> dict:
+def invoke_agent(question: str, thread_id: str | None = None, user_id: str | None = None) -> dict:
     """Run the agent once. Returns {output, tools_called, messages}."""
-    result = build_agent().invoke(_user_msg(question), _config(thread_id))
+    result = build_agent().invoke(_user_msg(question), _config(thread_id, user_id))
     output = next(
         (m.content for m in reversed(result["messages"])
          if isinstance(getattr(m, "content", None), str) and m.content),
@@ -79,10 +91,10 @@ def invoke_agent(question: str, thread_id: str | None = None) -> dict:
     return {"output": output, "tools_called": tools_called, "messages": result["messages"]}
 
 
-def stream_agent(question: str, thread_id: str | None = None):
+def stream_agent(question: str, thread_id: str | None = None, user_id: str | None = None):
     """Stream the agent's response text as it's generated."""
     for chunk, _meta in build_agent().stream(
-        _user_msg(question), _config(thread_id), stream_mode="messages"
+        _user_msg(question), _config(thread_id, user_id), stream_mode="messages"
     ):
         if isinstance(chunk, AIMessageChunk):
             yield from iter_text(chunk)

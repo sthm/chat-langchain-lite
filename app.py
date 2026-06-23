@@ -253,7 +253,11 @@ if user_input:
         response = ""
         try:
             from agent.agent import stream_agent
-            for chunk in stream_agent(question=user_input, thread_id=st.session_state.thread_id):
+            for chunk in stream_agent(
+                question=user_input,
+                thread_id=st.session_state.thread_id,
+                user_id=st.session_state.get("user_id"),
+            ):
                 response += chunk
                 placeholder.markdown(response)
         except Exception as e:
