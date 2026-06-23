@@ -207,10 +207,8 @@ if not st.session_state.messages:
     </div>
     """, unsafe_allow_html=True)
 
-    # Prebuilt cards (2 x 3 grid). The first card was trimmed from 5 topics
-    # to 3 so the response fits comfortably within Engine's typical
-    # max_tokens fix (it still truncates at max_tokens=300, just doesn't
-    # overflow once the fix is applied).
+    # Prebuilt cards (2 x 3 grid). The first card stays focused while the
+    # configurable response cap allows complete long-form answers.
     suggestions = [
         "Walk me through building a LangGraph agent with middleware, persistence, and streaming — include code.",
         "Show me how to set up LangSmith tracing and offline evals end-to-end.",

@@ -38,10 +38,9 @@ DATASET_NAME = f"chat-lc-lite-scope-{DEMO_PRESENTER}"
 TOOL_ADHERENCE_DATASET_NAME = f"chat-lc-lite-tools-{DEMO_PRESENTER}"
 
 EXAMPLES = [
-    # All seed assertions are LOW-BAR — the buggy agent passes them. The
-    # demo narrative is: "look, our existing test suite passes; but Engine
-    # sees production behavior we never tested." Engine then proposes
-    # adding stricter assertions / decline examples that expose the gaps.
+    # Most seed assertions are LOW-BAR so the demo can show Engine finding
+    # production behavior the original suite missed. Targeted regressions keep
+    # fixes from reintroducing known gaps.
     {
         "input": {"question": "How do I add LangSmith tracing to my LangChain app?"},
         "output": {
@@ -89,6 +88,20 @@ EXAMPLES = [
             ]
         },
         "metadata": {"category": "concept_info", "subcategory": "documentation"},
+    },
+    {
+        "input": {
+            "question": "Walk me through building a LangGraph agent with middleware, persistence, and streaming — include code."
+        },
+        "output": {
+            "assertions": [
+                {
+                    "key": "must_not_be_truncated",
+                    "comment": "Response is not cut off: it ends with a complete sentence or a closed code fence, not mid-sentence or mid-code-block.",
+                },
+            ]
+        },
+        "metadata": {"category": "agent_building", "subcategory": "langgraph_long_form"},
     },
 ]
 
